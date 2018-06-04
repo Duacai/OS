@@ -25,57 +25,6 @@
 00007C30  53                push bx
 00007C31  2D302E            sub ax,0x2e30
 00007C34  3031              xor [bx+di],dh
-00007C36  46                inc si
-00007C37  41                inc cx
-00007C38  54                push sp
-00007C39  3132              xor [bp+si],si
-00007C3B  2020              and [bx+si],ah
-00007C3D  208CC88E          and [si-0x7138],cl
-00007C41  D08ED88E          ror byte [bp-0x7128],1
-00007C45  C0BC007CB8        sar byte [si+0x7c00],byte 0xb8
-00007C4A  1300              adc ax,[bx+si]
-00007C4C  B90E00            mov cx,0xe
-00007C4F  BBDF7D            mov bx,0x7ddf
-00007C52  E82901            call 0x7d7e
-00007C55  BEB97D            mov si,0x7db9
-00007C58  B90600            mov cx,0x6
-00007C5B  BA0000            mov dx,0x0
-00007C5E  E8C600            call 0x7d27
-00007C61  83FA00            cmp dx,byte +0x0
-00007C64  742B              jz 0x7c91
-00007C66  89DE              mov si,bx
-00007C68  BFBF7D            mov di,0x7dbf
-00007C6B  B92000            mov cx,0x20
-00007C6E  E88500            call 0x7cf6
-00007C71  B80900            mov ax,0x9
-00007C74  8B0E0B7C          mov cx,[0x7c0b]
-00007C78  F7E1              mul cx
-00007C7A  BB0090            mov bx,0x9000
-00007C7D  29C3              sub bx,ax
-00007C7F  B80100            mov ax,0x1
-00007C82  B90900            mov cx,0x9
-00007C85  E8F600            call 0x7d7e
-00007C88  8B0ED97D          mov cx,[0x7dd9]
-00007C8C  E80E00            call 0x7c9d
-00007C8F  EB09              jmp short 0x7c9a
-00007C91  BDAC7D            mov bp,0x7dac
-00007C94  B90D00            mov cx,0xd
-00007C97  E8CB00            call 0x7d65
-00007C9A  F4                hlt
-00007C9B  EBFD              jmp short 0x7c9a
-00007C9D  89C8              mov ax,cx
-00007C9F  B102              mov cl,0x2
-00007CA1  F6F1              div cl
-00007CA3  50                push ax
-00007CA4  B400              mov ah,0x0
-00007CA6  B90300            mov cx,0x3
-00007CA9  F7E1              mul cx
-00007CAB  89C1              mov cx,ax
-00007CAD  58                pop ax
-00007CAE  80FC00            cmp ah,0x0
-00007CB1  7402              jz 0x7cb5
-00007CB3  EB1B              jmp short 0x7cd0
-00007CB5  89CA              mov dx,cx
 00007CB7  83C201            add dx,byte +0x1
 00007CBA  01DA              add dx,bx
 00007CBC  89D5              mov bp,dx
