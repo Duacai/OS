@@ -75,35 +75,35 @@ start:									; 汇编起始标号，类似于main()函数，之前用jmp跳转
 
 	call ReadSector						; 	读取Fat表，放到bx指向的地址
 
-	mov dx, [EntryItem + 0x1A]			; FAT表内存地址加0x1A写入cx寄存器，即文件开始的簇号（DIR_FstClus）
+	mov dx, [EntryItem + 0x1A]			; FAT表内存地址加0x1A写入dx寄存器，即文件开始的簇号（DIR_FstClus）
 
 	;call FatVec							;	获取簇对应的地址
 
 	;jmp last
-	mov si, BaseOfLoader
+	mov si, BaseOfLoader				; 数据加载区起始地址
 
 loading:
-	mov ax, dx
-	add ax, 31
-	mov cx, 1
+	mov ax, dx							; 将文件簇号放入ax，注意一个簇占用1扇区，否则需要转换成扇区数
+	add ax, 31							; 31=33-2；将簇号加上数据区域的地址；数据起始于33扇区，且从2开始，前2个表项不使用
+	mov cx, 1							; 读一个扇区
 	push dx
 	push bx
-	mov bx, si
-	call ReadSector
+	mov bx, si							; 将数据存放地址放入bx
+	call ReadSector						; 从ax读取cx大小到bx，读一个扇区的文件区数据到BaseOfLoader的前面
 	pop bx
-	pop cx		; pop cx=pop dx;mov cx, dx;
-	call FatVec
-	cmp dx, 0xFF7
-	jnb BaseOfLoader
+	pop cx								; pop cx ==> (pop dx;mov cx, dx;)
+	call FatVec							; 返回下一个簇的编号；bx=FAT1表的内存地址，cx=文件开始簇号，dx=下一个簇号
+	cmp dx, 0xFF7						; 是否为坏簇
+	jnb BaseOfLoader					; 簇号如果不小于坏簇编号就跳转；cmp的第一个操作数不小于第二个操作数就跳转
 	;jnb output
-	add si, 512
-	jmp loading
+	add si, 512							; 指向下一个簇（当前一个簇占一个扇区，一个扇区512字节）
+	jmp loading							; 循环加载
 
 output:
 	mov bp, MsgStr
 	mov cx, MsgLen
 	;mov bp, BaseOfLoader
-	;mov cx, [EntryItem + 0x1C]
+	;mov cx, [EntryItem + 0x1C]			; 输出长度为当前文件的大小，EntryItem=匹配的文件的文件项，0x1C=Dir_FileSize
 
 	call Print							; 调用字符串打印函数
 
@@ -239,7 +239,7 @@ FindEntry:								; 查找根目录文件
 find:
 	cmp dx, 0							; 如果没有文件就跳转到noexist结束
 	jz noexist
-	mov di, bx							; bx==Buf缓存；ReadSector（）已经读取数据到Buf缓存
+	mov di, bx							; bx==Buf缓存；ReadSector已经读取数据到Buf缓存
 	mov cx, [bp]						; 借助中间寄存器获取栈顶指针，此时的bp栈顶指针指向最后入栈的cx寄存器
 	push si
 	call MemCmp							; 内存匹配查找（文件查找），返回cx表示匹配的字符数（为0表示没有文件或匹配成功）
