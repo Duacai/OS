@@ -75,7 +75,7 @@ start:									; 汇编起始标号，类似于main()函数，之前用jmp跳转
 
 	call ReadSector						; 	读取Fat表，放到bx指向的地址
 
-	mov cx, [EntryItem + 0x1A]			; FAT表内存地址加0x1A写入cx寄存器，即文件开始的簇号（DIR_FstClus）
+	mov dx, [EntryItem + 0x1A]			; FAT表内存地址加0x1A写入cx寄存器，即文件开始的簇号（DIR_FstClus）
 
 	;call FatVec							;	获取簇对应的地址
 
@@ -94,13 +94,16 @@ loading:
 	pop cx		; pop cx=pop dx;mov cx, dx;
 	call FatVec
 	cmp dx, 0xFF7
-	jnb output
+	jnb BaseOfLoader
+	;jnb output
 	add si, 512
 	jmp loading
 
 output:
 	mov bp, MsgStr
 	mov cx, MsgLen
+	;mov bp, BaseOfLoader
+	;mov cx, [EntryItem + 0x1C]
 
 	call Print							; 调用字符串打印函数
 
@@ -172,10 +175,10 @@ return:
 ; es:di --> destination
 ; cx	--> length
 MemCpy:									; 内存拷贝
-	push si
-	push di
-	push cx
-	push ax
+	;push si
+	;push di
+	;push cx
+	;push ax
 
 	cmp si, di							; 比较内存地址大小，因为两个内存地址空间如果有重复拷贝方式将不同
 
@@ -209,10 +212,10 @@ etob:									; end to begin
 	jmp etob							; 循环拷贝
 
 done:									; 内存拷贝完毕还原寄存器数据
-	pop ax
-	pop cx
-	pop di
-	pop si
+	;pop ax
+	;pop cx
+	;pop di
+	;pop si
 
 	ret
 
@@ -226,8 +229,8 @@ done:									; 内存拷贝完毕还原寄存器数据
 ;		(dx != 0) ? exist : noexist
 ;			exist --> bx is the target entry
 FindEntry:								; 查找根目录文件
-	push di
-	push bp
+	;push di
+	;push bp
 	push cx
 
 	mov dx, [BPB_RootEntCnt]			; 最大根目录文件数
@@ -238,7 +241,9 @@ find:
 	jz noexist
 	mov di, bx							; bx==Buf缓存；ReadSector（）已经读取数据到Buf缓存
 	mov cx, [bp]						; 借助中间寄存器获取栈顶指针，此时的bp栈顶指针指向最后入栈的cx寄存器
+	push si
 	call MemCmp							; 内存匹配查找（文件查找），返回cx表示匹配的字符数（为0表示没有文件或匹配成功）
+	pop si
 	cmp cx, 0							; 返回0表示匹配成功或根目录没有文件，否则继续查找
 	jz exist
 	add bx, EntryItemLength				; Buf缓存地址加32，每个目录项占用32字节
@@ -248,8 +253,8 @@ find:
 exist:
 noexist:
 	pop cx
-	pop bp
-	pop di
+	;pop bp
+	;pop di
 
 	ret
 
@@ -262,9 +267,9 @@ noexist:
 ; return:
 ;		(cx == 0) ? equal : noequeal
 MemCmp:									; 内存数据对比
-	push si
-	push di
-	push ax
+	;push si
+	;push di
+	;push ax
 
 compare:
 	cmp cx, 0							; 到末尾（文件名结束符）就跳转到equal，目录项的第一段是文件名
@@ -281,9 +286,9 @@ goon:
 
 equal:
 noequal:
-	pop ax
-	pop di
-	pop si
+	;pop ax
+	;pop di
+	;pop si
 
 	ret
 
@@ -302,15 +307,15 @@ Print:									; 字符串打印函数
 ; ##############################################################################
 ; no parameter
 ResetFloppy:							; 重置软盘
-	push ax
-	push dx
+	;push ax
+	;push dx
 
 	mov ah, 0x00						; 磁盘系统复位
 	mov dl, [BS_DrvNum]					; 驱动器号（0x00~0x7F软盘，0x80~0x0FF硬盘）
 	int 0x13							; 读取磁盘的中断
 	
-	pop dx
-	pop ax
+	;pop dx
+	;pop ax
 
 	ret
 
@@ -318,10 +323,10 @@ ResetFloppy:							; 重置软盘
 ; cx	--> number of sector
 ; es:bx	--> target address
 ReadSector:								; 读扇区（函数）
-	push bx								; 保存相关寄存器
-	push cx
-	push dx
-	push ax
+	;push bx
+	;push cx
+	;push dx
+	;push ax
 	
 	call ResetFloppy					; 重置软盘
 	
@@ -347,10 +352,10 @@ read:
 	int 0x13							; 读取磁盘的中断
 	jc read								; 若进位位（CF）被置位，表示调用失败，需要重新读取
 
-	pop ax
-	pop dx
-	pop cx
-	pop bx
+	;pop ax
+	;pop dx
+	;pop cx
+	;pop bx
 
 	ret
 
@@ -359,7 +364,7 @@ read:
 MsgStr db "No LOADER ..."				; 定义字符串
 MsgLen equ ($-MsgStr)					; 定义上面字符串长度标号
 
-Target db "LOADER     "						; 要查栈的文件名
+Target db "LOADER     "					; 要查栈的文件名
 TarLen equ ($-Target)					; 要查找的文件名长度
 
 EntryItem times EntryItemLength db 0x00	; 目录项空间，且用0填充根目录区，32字节
