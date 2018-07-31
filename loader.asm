@@ -2,16 +2,18 @@
 
 org 0x9000
 
-jmp CODE16_SEGMENT
+jmp ENTRY_SEGMENT
 
 [section .gdt]	; 全局描述符表，部分段基址暂未知地址需使用时再调节
 ; GDT definition
 ;									段基址		段界限					段属性
 GDT_ENTRY		:		Descriptor	0,			0,						0
-CODE32_DESC		:		Descriptor	0,			Code32SegLen - 1,		DA_C + DA_32
+CODE32_DESC		:		Descriptor	0,			Code32SegLen - 1,		DA_C    + DA_32
 VIDEO_DESC		:		Descriptor	0xB8000,	0x07FFF,				DA_DRWA + DA_32
-DATA32_DESC		:		Descriptor	0,			Data32SegLen - 1,		DA_DR + DA_32
-STACK32_DESC	:		Descriptor	0,			TopOfStack32,			DA_DRW + DA_32
+DATA32_DESC		:		Descriptor	0,			Data32SegLen - 1,		DA_DR   + DA_32
+STACK32_DESC	:		Descriptor	0,			TopOfStack32,			DA_DRW  + DA_32
+CODE16_DESC		:		Descriptor	0,			0xFFFF,					DA_C
+UPDATE_DESC		:		Descriptor	0,			0xFFFF,					DA_DRW
 ; GDT end
 
 GdtLen	equ	$ - GDT_ENTRY
@@ -22,12 +24,13 @@ GdtPtr:					; 全局描述符表指针
 
 
 ; GDT Selector
-
+;							TI：全局、局部	RPL：请求权限级别
 Code32Selector	equ	(0x0001 << 3) + SA_TIG + SA_RPL0	; 0x0001==第二个选择子
 VideoSelector	equ (0x0002 << 3) + SA_TIG + SA_RPL0
 Data32Selector	equ (0x0003 << 3) + SA_TIG + SA_RPL0
 Stack32Selector	equ (0x0004 << 3) + SA_TIG + SA_RPL0
-
+Code16Selector	equ	(0x0005 << 3) + SA_TIG + SA_RPL0
+UpdateSelector	equ (0x0006 << 3) + SA_TIG + SA_RPL0
 ; end of [section .gdt]
 
 TopOfStack16 equ 0x7c00
@@ -44,12 +47,14 @@ Data32SegLen equ $ - DATA32_SEGMENT
 
 [section .s16]	; 实模式代码段（16bit）
 [bits 16]		; 使用16位编译
-CODE16_SEGMENT:
+ENTRY_SEGMENT:
     mov ax, cs	; 初始化相关寄存器
 	mov ds, ax
 	mov es, ax
 	mov ss, ax
-	mov sp, TopOfStack32
+	mov sp, TopOfStack16
+
+	mov [BACK_TO_REAL_MODE + 3], ax
 
 	; initialize GDT for 32 bits code segment
 	mov esi, CODE32_SEGMENT
@@ -64,6 +69,11 @@ CODE16_SEGMENT:
 
 	mov esi, STACK32_SEGMENT
 	mov edi, STACK32_DESC
+
+	call InitDescItem
+
+	mov esi, CODE16_SEGMENT
+	mov edi, CODE16_DESC
 
 	call InitDescItem
 
@@ -93,6 +103,27 @@ CODE16_SEGMENT:
 	; 5. jump to 32 bits code
 	jmp dword Code32Selector : 0	; 使用jmp跳转到32位代码段选择子的0偏移处
 
+BACK_ENTRY_SEGMENT:
+	mov ax, cs
+	mov ds, ax
+	mov es, ax
+	mov ss, ax
+	mov sp, TopOfStack16
+
+	in al, 0x92
+	and al, 11111101b
+	out 0x92, al
+
+	sti
+
+	mov bp, HELLO_WORLD
+	mov cx, 12
+	mov dx, 0
+	mov ax, 0x1301
+	mov bx, 0x0007
+	int 0x10
+
+	jmp $
 
 ; esi	--> code segment label
 ; edi	--> descriptor label
@@ -111,6 +142,26 @@ InitDescItem:						; 初始化描述符项目
 	pop eax
 	
 	ret
+
+
+[section .s16]
+[bits 16]
+CODE16_SEGMENT:						; 保护模式返回实模式
+	mov ax, UpdateSelector			; 注意不要操作CS寄存器，因为当前还是保护模式
+	mov ds, ax
+	mov es, ax
+	mov fs, ax
+	mov gs, ax
+	mov ss, ax
+
+	mov eax, cr0					; 进入保护模式
+	and al, 11111110b
+	mov cr0, eax
+
+BACK_TO_REAL_MODE:
+	jmp 0 : BACK_ENTRY_SEGMENT		; 注意使用段基地址 + 偏移量的方式 
+
+Code16SegLen equ $ - CODE16_SEGMENT
 
 
 [section .s32]	; 32位代码段
@@ -142,7 +193,7 @@ CODE32_SEGMENT:	; 32位代码段数据
 
 	call PrintString
 
-	jmp $
+	jmp Code16Selector : 0
 
 ; ds:ebp	--> string address
 ; bx		--> attribute
