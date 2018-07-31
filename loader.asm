@@ -9,7 +9,10 @@ jmp CODE16_SEGMENT
 ;									段基址	段界限					段属性
 GDT_ENTRY		:		Descriptor	0,		0,						0
 CODE32_DESC		:		Descriptor	0,		Code32SegLen - 1,		DA_C + DA_32
-; FDT end
+VIDEO_DESC		:		Descriptor	0xB8000,0x07FFF,				DA_DRWA + DA_32
+DATA32_DESC		:		Descriptor	0,		Data32SegLen - 1,		DA_DR + DA_32
+STACK_DESC		:		Descriptor	0,		TopOfStackInit,			DA_DRW + DA_32
+; GDT end
 
 GdtLen	equ	$ - GDT_ENTRY
 
@@ -21,9 +24,23 @@ GdtPtr:					; 全局描述符表指针
 ; GDT Selector
 
 Code32Selector	equ	(0x0001 << 3) + SA_TIG + SA_RPL0	; 0x0001==第二个选择子
+VideoSelector	equ (0x0002 << 3) + SA_TIG + SA_RPL0
+Data32Selector	equ (0x0003 << 3) + SA_TIG + SA_RPL0
+StackSelector	equ (0x0004 << 3) + SA_TIG + SA_RPL0
 
 ; end of [section .gdt]
 
+TopOfStackInit equ 0x7c00
+
+[section .dat]						; 32位数据段
+[bits 32]
+DATA32_SEGMENT:
+	DTOS				db "D.T.OS!", 0
+	DTOS_OFFSET			equ DTOS - $$
+	HELLO_WORLD			db "Hello World!", 0
+	HELLO_WORLD_OFFSET	equ HELLO_WORLD - $$
+
+Data32SegLen equ $ - DATA32_SEGMENT
 
 [section .s16]	; 实模式代码段（16bit）
 [bits 16]		; 使用16位编译
@@ -32,17 +49,18 @@ CODE16_SEGMENT:
 	mov ds, ax
 	mov es, ax
 	mov ss, ax
-	mov sp, 0x7c00
+	mov sp, TopOfStackInit
 
 	; initialize GDT for 32 bits code segment
-	mov eax, 0						; eax清0
-	mov ax, cs						; cs寄存器放入ax寄存器
-	shl eax, 4						; 左移4位
-	add eax, CODE32_SEGMENT			; 32位段基址 ==> cs代码段左移4位加上32位段的偏移
-	mov word [CODE32_DESC + 2], ax	; 将ax寄存器的32位段基址写入描述符的低32位的16-31bit(2字节处)
-	shr eax, 16						; 将eax右移2字节（上面已经写入了2字节）
-	mov byte [CODE32_DESC + 4], al	; 将al寄存器的32位段基址写入描述符的高32位的0-7bit(4字节处)
-	mov byte [CODE32_DESC + 7], ah	; 将ah寄存器的32位段基址写入描述符的高32位的24-31bit(7字节处)
+	mov esi, CODE32_SEGMENT
+	mov edi, CODE32_DESC
+
+	call InitDescItem
+		
+	mov esi, DATA32_SEGMENT
+	mov edi, DATA32_DESC
+
+	call InitDescItem
 
 	; initialize GDT pointer struct
 	mov eax, 0						; 代码段地址左移4位
@@ -70,10 +88,85 @@ CODE16_SEGMENT:
 	; 5. jump to 32 bits code
 	jmp dword Code32Selector : 0	; 使用jmp跳转到32位代码段选择子的0偏移处
 
+
+; esi	--> code  segment label
+; edi	--> descriptor label
+InitDescItem:						; 初始化描述符
+	push eax
+	
+	mov eax, 0						; 代码段地址左移4位
+	mov ax, cs
+	shl eax, 4
+	add eax, esi
+	mov word [edi + 2], ax			; 
+	shr eax, 16
+	mov byte [edi + 4], al
+	mov byte [edi + 7], ah
+
+	pop eax
+	
+	ret
+
+
 [section .s32]	; 32位代码段
 [bits 32]		; 使用32位编译
 CODE32_SEGMENT:	; 32位代码段数据
-	mov eax, 0 
-	jmp CODE32_SEGMENT
+	mov ax, VideoSelector			; 把视频段放到gs寄存器
+	mov gs, ax
+
+	mov ax, StackSelector
+	mov ss, ax
+
+	mov ax, Data32Selector
+	mov ds, ax
+
+	mov ebp, DTOS_OFFSET
+	mov bx, 0x0C					; 黑底红字
+	mov dh, 12						; 指定行地址
+	mov dl, 33						; 指定列地址
+
+	call PrintString
+
+	mov ebp, HELLO_WORLD_OFFSET
+	mov bx, 0x0C
+	mov dh, 13
+	mov dl, 31
+
+	call PrintString
+
+	jmp $
+
+; ds:ebp	--> string address
+; bx		--> attribute
+; dx		--> dh : row, dl : col
+PrintString:
+	push ebp
+	push eax
+	push edi
+	push cx
+	push dx
+print:								; 打印字符串函数
+	mov cl, [ds:ebp]
+	cmp cl, 0						; 对比字符串结束符号
+	je end
+	mov eax, 80						; 每行字符数
+	mul dh							; 乘以行数
+	add al, dl						; 加上列数，最终计算出要显示的位置
+	shl eax, 1						; 左移乘以2，计算字节偏移
+	mov edi, eax					; 写入显示的偏移地址到edi
+	mov ah, bl						; 字符显示属性
+	mov al, cl						; 字符
+	mov [gs:edi], ax				; 写入显存对应地址
+	inc ebp							; 指向下一个字符
+	inc dl							; 指向下一个显示的位置
+	jmp print
+
+end:
+	pop dx
+	pop cx
+	pop edi
+	pop eax
+	pop ebp
+	ret
 
 Code32SegLen	equ	$ - CODE32_SEGMENT
