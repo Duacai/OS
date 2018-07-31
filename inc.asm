@@ -1,4 +1,3 @@
-
 ; Segment Attribute	; 一致性是指高特权不能访问低特权，但是低特权能访问高特权，不过特权级别不变
 DA_32	equ	0x4000	; 保护模式32位段
 DA_DR	equ	0x90	; 只读数据段
@@ -16,7 +15,7 @@ SA_RPL2	equ	2		; 中低特权，服务级
 SA_RPL3	equ	3		; 低特权，用户级
 
 SA_TIG	equ	0		; GDT
-SA_TIL	equ	4		; LDT
+SA_TIL	equ	4		; LDT，本质是1，因为后面还有2bit的RPL标志位
 
 ; 描述符
 ; usage: Descriptor Base, Limit, Attr
@@ -30,4 +29,3 @@ SA_TIL	equ	4		; LDT
 	dw	((%2 >> 8) & 0xF00) | (%3 & 0xF0FF)	; 属性1 + 段界限2 + 属性2
 	db	(%1 >> 24) & 0xFF					; 段基址3
 %endmacro									; 共8字节
-
