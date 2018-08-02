@@ -8,6 +8,9 @@ DA_CR	equ	0x9A	; 可执行可读代码段
 DA_CCO	equ	0x9C	; 只执行一致代码段
 DA_CCOR	equ	0x9E	; 可执行可读一致代码段
 
+; Special Attribute
+DA_LDT	equ 0x82
+
 ; Selector Attribute
 SA_RPL0	equ	0		; 高特权，内核级
 SA_RPL1	equ	1		; 中高特权，服务级
