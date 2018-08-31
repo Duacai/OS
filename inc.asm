@@ -1,3 +1,4 @@
+
 ; Segment Attribute	; 一致性是指高特权不能访问低特权，但是低特权能访问高特权，不过特权级别不变
 DA_32	equ	0x4000	; 保护模式32位段
 DA_DR	equ	0x90	; 只读数据段
@@ -15,7 +16,12 @@ DA_DPL2		equ		0x40	; DPL = 2
 DA_DPL3		equ		0x60	; DPL = 3
 
 ; Special Attribute
-DA_LDT	equ 0x82
+DA_LDT		equ 0x82
+DA_TaskGate	equ 0x85	; 任务门类型值
+DA_386TSS	equ 0x89	; 可用 386 任务状态段类型值
+DA_386CGate	equ	0x8C	; 386 调用门类型值
+DA_386IGate equ 0x8E	; 386 中断门类型值
+DA_386TGate equ 0x8F	; 386 陷阱门类型值
 
 ; Selector Attribute
 SA_RPL0	equ	0		; 高特权，内核级
@@ -38,3 +44,17 @@ SA_TIL	equ	4		; LDT，本质是1，因为后面还有2bit的RPL标志位
 	dw	((%2 >> 8) & 0xF00) | (%3 & 0xF0FF)	; 属性1 + 段界限2 + 属性2
 	db	(%1 >> 24) & 0xFF					; 段基址3
 %endmacro									; 共8字节
+
+; 门
+; usage: Gate Selector, Offset, DCount, Attr
+;			Selector:	dw
+;			Offset:		dd
+;			DCount:		db
+;			Attr:		db
+%macro Gate 4
+	dw (%2 & 0xFFFF)						; 偏移地址1
+	dw %1									; 选择子
+	dw (%3 & 0x1F) | ((%4 << 8) & 0xFF00)	; 属性
+	dw ((%2 >> 16) & 0xFFFF)				; 偏移地址2
+%endmacro
+
