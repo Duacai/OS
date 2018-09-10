@@ -49,6 +49,7 @@ start:									; 汇编起始标号，类似于main()函数，之前用jmp跳转
 	mov bx, Buf							; 读取的目录文件项存放处
 
 	call ReadSector						; 	读取指定扇区数据到Buf缓存
+
 	mov si, Target						; 要查找的文件名
 	mov cx, TarLen						; 文件名长度
 	mov dx, 0							; 设置默认返回值为查找失败
