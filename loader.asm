@@ -8,10 +8,10 @@ jmp ENTRY_SEGMENT
 ; GDT definition
 ;						"函数名"	段基址		段界限					段属性
 GDT_ENTRY		:		Descriptor	0,			0,						0				; 全局段描述符表第0项不使用
-CODE32_DESC		:		Descriptor	0,			Code32SegLen - 1,		DA_C    + DA_32
-VIDEO_DESC		:		Descriptor	0xB8000,	0x07FFF,				DA_DRWA + DA_32
-DATA32_DESC		:		Descriptor	0,			Data32SegLen - 1,		DA_DR	+ DA_32
-STACK32_DESC	:		Descriptor	0,			TopOfStack32,			DA_DRW  + DA_32
+CODE32_DESC		:		Descriptor	0,			Code32SegLen - 1,		DA_C    + DA_32	+ DA_DPL3
+VIDEO_DESC		:		Descriptor	0xB8000,	0x07FFF,				DA_DRWA + DA_32	+ DA_DPL3
+DATA32_DESC		:		Descriptor	0,			Data32SegLen - 1,		DA_DR	+ DA_32	+ DA_DPL3
+STACK32_DESC	:		Descriptor	0,			TopOfStack32,			DA_DRW  + DA_32	+ DA_DPL3
 ; GDT end
 
 GdtLen	equ	$ - GDT_ENTRY
@@ -23,10 +23,10 @@ GdtPtr:										; 全局描述符表指针
 
 ; GDT Selector
 ;								TI：全局、局部	RPL：请求权限级别
-Code32Selector		equ	(0x0001 << 3) + SA_TIG + SA_RPL0	; 0x0001==第二个选择子
-VideoSelector		equ (0x0002 << 3) + SA_TIG + SA_RPL0
-Data32Selector		equ (0x0003 << 3) + SA_TIG + SA_RPL0
-Stack32Selector		equ (0x0004 << 3) + SA_TIG + SA_RPL0
+Code32Selector		equ	(0x0001 << 3) + SA_TIG + SA_RPL3	; 0x0001==第二个选择子
+VideoSelector		equ (0x0002 << 3) + SA_TIG + SA_RPL3
+Data32Selector		equ (0x0003 << 3) + SA_TIG + SA_RPL3
+Stack32Selector		equ (0x0004 << 3) + SA_TIG + SA_RPL3
 
 ; end of [section .gdt]
 
@@ -81,8 +81,13 @@ ENTRY_SEGMENT:								; 16位保护模式入口段
 	mov cr0, eax
 
 			; 5. jump to 32 bits code
-	jmp dword Code32Selector : 0 ; 使用jmp跳转到32位代码段选择子的0偏移处
-
+	;jmp dword Code32Selector : 0 ; 使用jmp跳转到32位代码段选择子的0偏移处
+	push Stack32Selector		; 目标栈段选择子
+	push TopOfStack32			; 栈顶指针地址
+	push Code32Selector			; 目标代码段选择子
+	push 0						; 目标代码段偏移
+	retf
+	
 
 ; esi	--> code segment label
 ; edi	--> descriptor label
