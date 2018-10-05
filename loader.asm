@@ -13,6 +13,7 @@ VIDEO_DESC		:		Descriptor	0xB8000,	0x07FFF,				DA_DRWA + DA_32	+ DA_DPL2; 视频
 DATA32_DESC		:		Descriptor	0,			Data32SegLen - 1,		DA_DR	+ DA_32	+ DA_DPL2
 STACK32_DESC	:		Descriptor	0,			TopOfStack32,			DA_DRW  + DA_32	+ DA_DPL1
 FUNCTION_DESC	:		Descriptor	0,			FunctionSegLen -1,		DA_C	+ DA_32 + DA_DPL1
+NEW_DESC		:		Descriptor	0,			NewSegLen	 - 1,		DA_CCO	+ DA_32	+ DA_DPL0
 ; GDT end
 
 GdtLen	equ	$ - GDT_ENTRY
@@ -29,6 +30,7 @@ VideoSelector		equ (0x0002 << 3) + SA_TIG + SA_RPL2	; 显存特权级低只会�
 Data32Selector		equ (0x0003 << 3) + SA_TIG + SA_RPL2
 Stack32Selector		equ (0x0004 << 3) + SA_TIG + SA_RPL1
 FunctionSelector	equ (0x0005 << 3) + SA_TIG + SA_RPL1
+NewSelector			equ (0x0006 << 3) + SA_TIG + SA_RPL0
 
 ; end of [section .gdt]
 
@@ -66,6 +68,11 @@ ENTRY_SEGMENT:								; 16位保护模式入口段
 	
 	call InitDescItem
 	
+	mov esi, NEW_SEGMENT		; 初始化一致性代码段描述符
+	mov edi, NEW_DESC
+	
+	call InitDescItem
+
 			; initialize GDT pointer struct
 	mov eax, 0					; 代码段地址左移4位
 	mov ax, ds
@@ -139,17 +146,31 @@ CODE32_SEGMENT:								; 32位代码段数据
 	mov eax, TopOfStack32			; 设置32位栈顶地址
 	mov esp, eax
 
-	mov ebp, DTOS_OFFSET			; 全局函数打印字符串，使用选择子：偏移量调用
+	;mov ebp, DTOS_OFFSET			; 全局函数打印字符串，使用选择子：偏移量调用
+	;mov bx, 0x0c
+	;mov dh, 12
+	;mov dl, 33
+	
+	;call FunctionSelector : PrintString
+	
+	jmp NewSelector : 0 
+
+Code32SegLen	equ		$ - CODE32_SEGMENT
+
+[section .new]	; conforming code seg
+[bits 32]
+NEW_SEGMENT:
+	mov ebp, DTOS_OFFSET			; 一致性代码段打印字符串，使用选择子：偏移量调用
 	mov bx, 0x0c
 	mov dh, 12
 	mov dl, 33
 	
 	call FunctionSelector : PrintString
-	
+
 	jmp $
 
-Code32SegLen	equ		$ - CODE32_SEGMENT
-	
+NewSegLen	equ	$ - NEW_SEGMENT
+
 [section .func]
 [bits 32]
 FUNCTION_SEGMENT:
