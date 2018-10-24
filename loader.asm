@@ -5,11 +5,11 @@ org 0x9000									; 内存加载地址
 jmp ENTRY_SEGMENT							; 跳转到ENTRY_SEGMENT入口处
 
 [section .gdt]								; 全局描述符表，部分段基址未知基址需使用时再调节（InitDescItem）
-; GDT definition
+; GDT definition		8Byte 64bit
 ;						"函数名"	段基址		段界限					段属性
 GDT_ENTRY		:		Descriptor	0,			0,						0				; 全局段描述符表第0项不使用
 CODE32_DESC		:		Descriptor	0,			Code32SegLen - 1,		DA_C    + DA_32	+ DA_DPL1
-VIDEO_DESC		:		Descriptor	0xB8000,	0x07FFF,				DA_DRWA + DA_32	+ DA_DPL2; 视频段描述符表设在正确无须初始化
+VIDEO_DESC		:		Descriptor	0xB8000,	0x07FFF,				DA_DRWA + DA_32	+ DA_DPL2; 视频段描述符表设置正确无须初始化
 DATA32_DESC		:		Descriptor	0,			Data32SegLen - 1,		DA_DR	+ DA_32	+ DA_DPL2
 STACK32_DESC	:		Descriptor	0,			TopOfStack32,			DA_DRW  + DA_32	+ DA_DPL1
 FUNCTION_DESC	:		Descriptor	0,			FunctionSegLen -1,		DA_C	+ DA_32 + DA_DPL1
@@ -23,7 +23,7 @@ GdtPtr:										; 全局描述符表指针
 		dd	0			; 全局描述符起始地址，先设置为0
 
 
-; GDT Selector
+; GDT Selector		2Byte 16bit
 ;								TI：全局、局部	RPL：请求权限级别
 Code32Selector		equ	(0x0001 << 3) + SA_TIG + SA_RPL1	; 0x0001==第二个选择子
 VideoSelector		equ (0x0002 << 3) + SA_TIG + SA_RPL2	; 显存特权级低只会影响显示，对系统安全无影响
@@ -101,7 +101,7 @@ ENTRY_SEGMENT:								; 16位保护模式入口段
 	push TopOfStack32
 	push Code32Selector
 	push 0
-	retf
+	retf						; 弹出2个栈，分别为给IP、CS寄存器
 
 
 ; esi	--> code segment label
@@ -113,7 +113,7 @@ InitDescItem:								; 初始化描述符项目
 	mov ax, cs
 	shl eax, 4						; 实地址=段寄存器地址左移4位+偏移地址
 	add eax, esi
-	mov word [edi + 2], ax			; 将段基址写入描述符2个字节（16位寄存器），低32位的16-31bit（偏移2字节）
+	mov word [edi + 2], ax			; 将段基址写入描述符2个字节（16位寄存器），低32位的16-31bit（偏移0+2字节）
 	shr eax, 16						; 移除eax实地址中已经写入段基址的2字节数据
 	mov byte [edi + 4], al			; 将段基址写入描述符1个字节(8位寄存器)，高32位的0-7bit（偏移4+0=4字节）
 	mov byte [edi + 7], ah			; 将段基址写入描述符1个字节(8位寄存器)，高32位的24-31bit（偏移4+3=7字节）
@@ -186,19 +186,23 @@ PrintStringFunc:
 	push dx
 	
 Print:
-	mov cl, [ds:ebp]
-	cmp cl, 0
+	mov cl, [ds:ebp]		; 取一个字符
+	cmp cl, 0				; 结束符判断
 	je end
-	mov eax, 80
-	mul dh
-	add al, dl
-	shl eax, 1
+	mov eax, 80				; 每行字符列数
+	mul dh					; 乘以行数
+    ;add al, dl             ; 总偏移字符数，al太小超过255会溢出（3*80+16==3行16列）
+    push dx                 ; 备份dx（dh），供循环调用避免丢失行号
+    mov dh, 0               ; dx高位置0，确保dx=dl
+    add ax, dx              ; 总偏移字符数（65536个字符）
+    pop dx
+	shl eax, 1				; 每个字符占2字节
 	mov edi, eax
-	mov ah, bl
-	mov al, cl
-	mov [gs:edi], ax
-	inc ebp
-	inc dl
+	mov ah, bl				; 字符属性
+	mov al, cl				; 字符
+	mov [gs:edi], ax		; 写入显存
+	inc ebp					; 字符源地址递增
+	inc dl					; 显存字符地址递增
 	jmp Print
 	
 end:
