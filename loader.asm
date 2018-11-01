@@ -6,19 +6,19 @@ jmp ENTRY_SEGMENT							; 跳转到ENTRY_SEGMENT入口处
 
 [section .gdt]								; 全局描述符表，部分段基址未知基址需使用时再调节（InitDescItem）
 ; GDT definition		8Byte 64bit
-;						"函数名"	段基址		段界限					段属性
-GDT_ENTRY		:		Descriptor	0,			0,						0				; 全局段描述符表第0项不使用
-CODE32_DESC		:		Descriptor	0,			Code32SegLen - 1,		DA_C    + DA_32	+ DA_DPL2
-VIDEO_DESC		:		Descriptor	0xB8000,	0x07FFF,				DA_DRWA + DA_32	+ DA_DPL2; 视频段描述符表设置正确无须初始化
-DATA32_DESC_0	:		Descriptor	0,			Data32SegLen0 - 1,		DA_DR	+ DA_32	+ DA_DPL0
-DATA32_DESC_2	:		Descriptor	0,			Data32SegLen2 - 1,		DA_DR	+ DA_32	+ DA_DPL2
-STACK32_DESC_0	:		Descriptor	0,			TopOfStack320,			DA_DRW  + DA_32	+ DA_DPL0
-STACK32_DESC_2	:		Descriptor	0,			TopOfStack322,			DA_DRW  + DA_32	+ DA_DPL2
-TSS_DESC		:		Descriptor	0,			TSSLen	 - 		1,		DA_386TSS		+ DA_DPL0
-FUNCTION_DESC	:		Descriptor	0,			FunctionSegLen -1,		DA_C	+ DA_32 + DA_DPL0
+;							"函数名"		段基址		段界限						段属性
+GDT_ENTRY			:		Descriptor	0,			0,							0							; 全局段描述符表第0项不使用
+CODE32_DESC			:		Descriptor	0,			Code32SegLen		-	1,	DA_C    + DA_32	+ DA_DPL3
+VIDEO_DESC			:		Descriptor	0xB8000,	0x07FFF,					DA_DRWA + DA_32	+ DA_DPL3	; 视频段描述符表设置正确无须初始化
+DATA32_KERNEL_DESC	:		Descriptor	0,			Data32KernelSegLen	-	1,	DA_DRW	+ DA_32	+ DA_DPL0
+DATA32_USER_DESC	:		Descriptor	0,			Data32UserSegLen	-	1,	DA_DRW	+ DA_32	+ DA_DPL3
+STACK32_KERNEL_DESC	:		Descriptor	0,			TopOfKernelStack32,			DA_DRW  + DA_32	+ DA_DPL0
+STACK32_USER_DESC	:		Descriptor	0,			TopOfUserStack32,			DA_DRW  + DA_32	+ DA_DPL3
+TSS_DESC			:		Descriptor	0,			TSSLen				-	1,	DA_386TSS		+ DA_DPL0
+FUNCTION_DESC		:		Descriptor	0,			FunctionSegLen		-	1,	DA_C	+ DA_32 + DA_DPL0
 ; Call Gate
-;										选择子				偏移		参数个数			属性
-FUNC_PRINTSTRING_DESC	:	Gate	FunctionSelector,	PrintString,	0,	DA_386CGate + DA_DPL3
+;										选择子				偏移			参数个数		属性
+FUNC_GETKERNELDATA_DESC	:	Gate	FunctionSelector,	GetKernelData,	0,		DA_386CGate + DA_DPL3
 ; GDT end
 
 GdtLen	equ	$ - GDT_ENTRY
@@ -28,17 +28,17 @@ GdtPtr:										; 全局描述符表指针
 		dd	0			; 全局描述符起始地址，先设置为0
 
 
-; GDT Selector		2Byte 16bit	TI：全局、局部	RPL：请求权限级别
-Code32Selector		equ	(0x0001 << 3) + SA_TIG + SA_RPL2	; 0x0001==第二个选择子
-VideoSelector		equ (0x0002 << 3) + SA_TIG + SA_RPL2	; 显存特权级低只会影响显示，对系统安全无影响
-Data32Selector0		equ (0x0003 << 3) + SA_TIG + SA_RPL0
-Data32Selector2		equ (0x0004 << 3) + SA_TIG + SA_RPL2
-Stack32Selector0	equ (0x0005 << 3) + SA_TIG + SA_RPL0
-Stack32Selector2	equ (0x0006 << 3) + SA_TIG + SA_RPL2
-TSSSelector			equ (0x0007 << 3) + SA_TIG + SA_RPL0
-FunctionSelector	equ (0x0008 << 3) + SA_TIG + SA_RPL0
+; GDT Selector			2Byte 16bit	TI：全局、局部	RPL：请求权限级别
+Code32Selector			equ	(0x0001 << 3) + SA_TIG + SA_RPL3	; 0x0001==第二个选择子
+VideoSelector			equ (0x0002 << 3) + SA_TIG + SA_RPL3	; 显存特权级低只会影响显示，对系统安全无影响
+KernelData32Selector	equ (0x0003 << 3) + SA_TIG + SA_RPL0
+UserData32Selector		equ (0x0004 << 3) + SA_TIG + SA_RPL3
+KernelStack32Selector	equ (0x0005 << 3) + SA_TIG + SA_RPL0
+UserStack32Selector		equ (0x0006 << 3) + SA_TIG + SA_RPL3
+TSSSelector				equ (0x0007 << 3) + SA_TIG + SA_RPL0
+FunctionSelector		equ (0x0008 << 3) + SA_TIG + SA_RPL0
 ; Gate Selector
-FuncPrintStringSelector	equ	(0x0009 << 3) + SA_TIG + SA_RPL3
+GetKernelDataSelector	equ (0x0009 << 3) + SA_TIG + SA_RPL3
 ; end of [section .gdt]
 
 TopOfStack16 equ 0x7c00
@@ -58,23 +58,23 @@ ENTRY_SEGMENT:								; 16位保护模式入口段
 
 	call InitDescItem
 	;  视频段描述符表设置正确无须初始化
-	mov esi, DATA32_SEGMENT_0
-	mov edi, DATA32_DESC_0
+	mov esi, DATA32_KERNEL_SEGMENT
+	mov edi, DATA32_KERNEL_DESC
 
 	call InitDescItem
 	
-	mov esi, DATA32_SEGMENT_2
-	mov edi, DATA32_DESC_2
+	mov esi, DATA32_USER_SEGMENT
+	mov edi, DATA32_USER_DESC
 	
 	call InitDescItem
 		
-	mov esi, STACK32_SEGMENT_0
-	mov edi, STACK32_DESC_0
+	mov esi, STACK32_KERNEL_SEGMENT
+	mov edi, STACK32_KERNEL_DESC
 
 	call InitDescItem
 
-	mov esi, STACK32_SEGMENT_2
-	mov edi, STACK32_DESC_2
+	mov esi, STACK32_USER_SEGMENT
+	mov edi, STACK32_USER_DESC
 
 	call InitDescItem
 	
@@ -116,15 +116,15 @@ ENTRY_SEGMENT:								; 16位保护模式入口段
 	mov ax, TSSSelector
 	ltr ax
 
-			; 6. jump to 32 bits code
-	push Stack32Selector2		;jmp dword Code32Selector : 0 ; 使用jmp跳转到32位代码段选择子的0偏移处
-	push TopOfStack322
+; 			6. jump to 32 bits code
+	;jmp word Code32Selector : 0
+	push UserStack32Selector		;jmp dword Code32Selector : 0 ; 使用jmp跳转到32位代码段选择子的0偏移处
+	push TopOfUserStack32
 	push Code32Selector
 	push 0
 	retf						; 弹出2个栈，分别给IP、CS寄存器
 	
 	
-
 ; esi	--> code segment label
 ; edi	--> descriptor label
 InitDescItem:								; 初始化描述符项目
@@ -143,38 +143,42 @@ InitDescItem:								; 初始化描述符项目
 	
 	ret
 
-[section .dat0]
+[section .kdat]
 [bits 32]
-DATA32_SEGMENT_0:
-	DPL0			db	"DPL = 0", 0
-	DPL0_OFFSET		equ	DPL0 - $$
+DATA32_KERNEL_SEGMENT:
+	KDAT			db	"Kernel Data", 0
+	KDAT_LEN		equ $ - KDAT
+	KDAT_OFFSET		equ	KDAT - $$
 	
-Data32SegLen0 equ $ - DATA32_SEGMENT_0
+Data32KernelSegLen equ $ - DATA32_KERNEL_SEGMENT
 
-[section .dat2]
+[section .udat]
 [bits 32]
-DATA32_SEGMENT_2:
-	DPL2			db	"DPL = 2", 0
-	DPL2_OFFSET		equ	DPL2 - $$
+DATA32_USER_SEGMENT:
+	UDAT			times 16 db 0
+	UDAT_LEN		equ $ - UDAT
+	UDAT_OFFSET		equ	UDAT - $$
 	
-Data32SegLen2 equ $ - DATA32_SEGMENT_2
+Data32UserSegLen equ $ - DATA32_USER_SEGMENT
 
 [section .tss]					; TSS任务段104字节，另可附加额外信息
 [bits 32]
 TSS_SEGMENT:
-		dd	0					; 保留前一个TSS段选择子，由CPU填写，高位填0
-		dd	TopOfStack320		; 0特权级栈指针
-		dd	Stack32Selector0	; 0特权级栈段选择子，只能用低2个字节，高位填0
-		dd	0					; 1特权级
-		dd	0					;
-		dd	0					; 2特权级
-		dd	0					;
-		times 4 * 18 dd 0		; 用于切换寄存器的值，由CPU填写，共18个dd类型
-		dw	0					; 最低位为调试陷阱标志T，其余为0
-		dw	$ - TSS_SEGMENT + 2	; I/O Map Base Address
-		db	0xFF				; 结束标记，属于额外信息
+		dd	0						; 保留前一个TSS段选择子，由CPU填写，高位填0
+		dd	TopOfKernelStack32		; 0特权级栈指针
+		dd	KernelStack32Selector	; 0特权级栈段选择子，只能用低2个字节，高位填0
+		dd	0						; 1特权级
+		dd	0						;
+		dd	0						; 2特权级
+		dd	0						;
+		times 4 * 18 dd 0			; 用于切换寄存器的值，由CPU填写，共18个dd类型
+		dw	0						; 最低位为调试陷阱标志T，其余为0
+		dw	$ - TSS_SEGMENT + 2		; I/O Map Base Address
+		db	0xFF					; 结束标记，属于额外信息
 		
 TSSLen	equ	$ - TSS_SEGMENT
+
+
 
 [section .s32]	; 32位代码段
 [bits 32]		; 使用32位编译
@@ -182,29 +186,29 @@ CODE32_SEGMENT:								; 32位代码段数据
 	mov ax, VideoSelector			; 把视频段选择子放到gs全局段寄存器
 	mov gs, ax
 
-	mov ax, Data32Selector2			; 设置数据段地址
+	mov ax, UserData32Selector		; 设置数据段地址
+	mov es, ax
+	
+	mov di, UDAT_OFFSET
+	
+	call GetKernelDataSelector : 0	; 使用调用门模拟恶意操作，拷贝内核数据至用户空间
+	
+	mov ax, UserData32Selector		; 入栈eip ==> eip+当前指令相对上面一条指令的偏移（0x10+7=0x17）
 	mov ds, ax
 	
-	mov ebp, DPL2_OFFSET			; 全局函数打印字符串，使用选择子：偏移量调用
-	mov bx, 0x0c
+	mov ebp, UDAT_OFFSET
+	mov bx, 0x0C
 	mov dh, 12
 	mov dl, 33
-	
-	call FuncPrintStringSelector : 0
-	
+		
+	call PrintString
+
 	jmp $
-
-Code32SegLen	equ		$ - CODE32_SEGMENT
-
-
-[section .func]
-[bits 32]
-FUNCTION_SEGMENT:
 
 ; ds:ebp		--> string address
 ; bx			--> attribute
 ; dx			--> dh : row, dl : col
-PrintStringFunc:
+PrintString:
 	push ebp
 	push eax
 	push edi
@@ -212,23 +216,23 @@ PrintStringFunc:
 	push dx
 	
 Print:
-	mov cl, [ds:ebp]
-	cmp cl, 0
+	mov cl, [ds:ebp]		; 取一个字符
+	cmp cl, 0				; 结束符判断
 	je end
-	mov eax, 80
-	mul dh
+	mov eax, 80				; 每行字符列数
+	mul dh					; 乘以行数
     ;add al, dl             ; 总偏移字符数，al太小超过255会溢出（3*80+16==3行16列）
     push dx                 ; 备份dx（dh），供循环调用避免丢失行号
     mov dh, 0               ; dx高位置0，确保dx=dl
     add ax, dx              ; 总偏移字符数（65536个字符）
     pop dx
-	shl eax, 1
+	shl eax, 1				; 每个字符占2字节
 	mov edi, eax
-	mov ah, bl
-	mov al, cl
-	mov [gs:edi], ax
-	inc ebp
-	inc dl
+	mov ah, bl				; 字符属性
+	mov al, cl				; 字符
+	mov [gs:edi], ax		; 写入显存
+	inc ebp					; 字符源地址递增
+	inc dl					; 显存字符地址递增
 	jmp Print
 	
 end:
@@ -237,29 +241,100 @@ end:
 	pop edi
 	pop eax
 	pop ebp
-	
-	mov ax, Data32Selector0
-	mov ds, ax
-	mov gs, ax
-
+	jmp $
 	retf
 	
-PrintString		equ PrintStringFunc - $$
+Code32SegLen	equ $ - CODE32_SEGMENT
 
+
+[section .func]
+[bits 32]
+FUNCTION_SEGMENT:
+
+;es:di --> data buffer
+GetKernelDataFunc:			; 调用门，利用此调用门进入内核拷贝数据
+	mov cx, [esp + 4]		; 重写RPL避免使用高权限选择子进入内核程序
+	and cx, 0x0003
+	mov ax, es
+	and ax, 0xFFFC
+	or ax, cx
+	mov es, ax
+
+	mov ax, KernelData32Selector
+	mov ds, ax
+	
+	mov si, KDAT_OFFSET
+	
+	mov cx, KDAT_LEN
+	
+	call KMemCpy
+	
+	retf
+	
+; ds:si --> source
+; es:di --> destination
+; cx	--> length
+KMemCpy:					; 内存拷贝
+	mov ax, es
+	
+	call CheckRPL			; 检查RPL避免猜中选择子后进入内核，ax==原有RPL
+	
+	cmp si, di
+	ja btoe
+	add si, cx
+	add di, cx
+	dec si
+	dec di
+	jmp etob
+btoe:						; 源在后从前拷贝
+	cmp cx, 0
+	jz done
+	mov al, [ds:si]
+	mov byte [es:di], al
+	inc si
+	inc di
+	dec cx
+	jmp btoe
+etob:						; 源在前从尾拷贝
+	cmp cx, 0
+	jz done
+	mov al, [ds:si]
+	mov byte [es:di], al
+	dec si
+	dec di
+	dec cx
+	jmp etob
+done:
+	ret
+	
+; ax --> selector value
+CheckRPL:
+	and ax, 0x0003			; 如果是RPL3则立即退出，否则进入异常
+	cmp ax, SA_RPL0
+	jz valid
+	
+	mov ax, 0
+	mov fs, ax
+	mov byte [fs:0], 0
+	
+valid:
+	ret
+	
+GetKernelData	equ	GetKernelDataFunc - $$
 FunctionSegLen	equ $ - FUNCTION_SEGMENT
 	
-[section .gs0]
+[section .kgs]
 [bits 32]
-STACK32_SEGMENT_0:							; 32位栈段定义
-	times 1024 * 4 db 0
+STACK32_KERNEL_SEGMENT:							; 32位栈段定义
+	times 256 * 4 db 0
 
-Stack32SegLen0 equ $ - STACK32_SEGMENT_0
-TopOfStack320 equ Stack32SegLen0 - 1
+Stack32KernelSegLen equ $ - STACK32_KERNEL_SEGMENT
+TopOfKernelStack32 equ Stack32KernelSegLen - 1
 
-[section .gs2]
+[section .usg]
 [bits 32]
-STACK32_SEGMENT_2:							; 32位栈段定义
-	times 1024 * 4 db 0
+STACK32_USER_SEGMENT:							; 32位栈段定义
+	times 256 * 4 db 0
 
-Stack32SegLen2 equ $ - STACK32_SEGMENT_2
-TopOfStack322 equ Stack32SegLen2 - 1
+Stack32UserSegLen equ $ - STACK32_USER_SEGMENT
+TopOfUserStack32 equ Stack32UserSegLen - 1
