@@ -1,21 +1,26 @@
 %include "inc.asm"							; 加载头文件，一些常量、设置函数
 
+PageDirBase		equ		0x200000
+PageTblBase		equ		0x201000
+
 org 0x9000									; 内存加载地址
 
 jmp ENTRY_SEGMENT							; 跳转到ENTRY_SEGMENT入口处
 
 [section .gdt]								; 全局描述符表，部分段基址未知基址需使用时再调节（InitDescItem）
 ; GDT definition		8Byte 64bit
-;							"函数名"		段基址		段界限						段属性
-GDT_ENTRY			:		Descriptor	0,			0,							0							; 全局段描述符表第0项不使用
-CODE32_DESC			:		Descriptor	0,			Code32SegLen		-	1,	DA_C    + DA_32	+ DA_DPL3
-VIDEO_DESC			:		Descriptor	0xB8000,	0x07FFF,					DA_DRWA + DA_32	+ DA_DPL3	; 视频段描述符表设置正确无须初始化
-DATA32_KERNEL_DESC	:		Descriptor	0,			Data32KernelSegLen	-	1,	DA_DRW	+ DA_32	+ DA_DPL0
-DATA32_USER_DESC	:		Descriptor	0,			Data32UserSegLen	-	1,	DA_DRW	+ DA_32	+ DA_DPL3
-STACK32_KERNEL_DESC	:		Descriptor	0,			TopOfKernelStack32,			DA_DRW  + DA_32	+ DA_DPL0
-STACK32_USER_DESC	:		Descriptor	0,			TopOfUserStack32,			DA_DRW  + DA_32	+ DA_DPL3
-TSS_DESC			:		Descriptor	0,			TSSLen				-	1,	DA_386TSS		+ DA_DPL0
-FUNCTION_DESC		:		Descriptor	0,			FunctionSegLen		-	1,	DA_C	+ DA_32 + DA_DPL0
+;							"函数名"		段基址			段界限						段属性
+GDT_ENTRY			:		Descriptor	0,				0,							0							; 全局段描述符表第0项不使用
+CODE32_DESC			:		Descriptor	0,				Code32SegLen		-	1,	DA_C    + DA_32	+ DA_DPL3
+VIDEO_DESC			:		Descriptor	0xB8000,		0x07FFF,					DA_DRWA + DA_32	+ DA_DPL3	; 视频段描述符表设置正确无须初始化
+DATA32_KERNEL_DESC	:		Descriptor	0,				Data32KernelSegLen	-	1,	DA_DRW	+ DA_32	+ DA_DPL0
+DATA32_USER_DESC	:		Descriptor	0,				Data32UserSegLen	-	1,	DA_DRW	+ DA_32	+ DA_DPL3
+STACK32_KERNEL_DESC	:		Descriptor	0,				TopOfKernelStack32,			DA_DRW  + DA_32	+ DA_DPL0
+STACK32_USER_DESC	:		Descriptor	0,				TopOfUserStack32,			DA_DRW  + DA_32	+ DA_DPL3
+TSS_DESC			:		Descriptor	0,				TSSLen				-	1,	DA_386TSS		+ DA_DPL0
+FUNCTION_DESC		:		Descriptor	0,				FunctionSegLen		-	1,	DA_C	+ DA_32 + DA_DPL0
+PAGE_DIR_DESC		:		Descriptor	PageDirBase,	4095,						DA_DRW  + DA_32
+PAGE_TBL_DESC		:		Descriptor	PageTblBase,	1023,						DA_DRW  + DA_LIMIT_4K + DA_32
 ; Call Gate
 ;										选择子				偏移			参数个数		属性
 FUNC_GETKERNELDATA_DESC	:	Gate	FunctionSelector,	GetKernelData,	0,		DA_386CGate + DA_DPL3
@@ -37,6 +42,8 @@ KernelStack32Selector	equ (0x0005 << 3) + SA_TIG + SA_RPL0
 UserStack32Selector		equ (0x0006 << 3) + SA_TIG + SA_RPL3
 TSSSelector				equ (0x0007 << 3) + SA_TIG + SA_RPL0
 FunctionSelector		equ (0x0008 << 3) + SA_TIG + SA_RPL0
+PageDirSelector			equ (0x0009 << 3) + SA_TIG + SA_RPL0
+PageTblSelector			equ (0x000a << 3) + SA_TIG + SA_RPL0
 ; Gate Selector
 GetKernelDataSelector	equ (0x0009 << 3) + SA_TIG + SA_RPL3
 ; end of [section .gdt]
@@ -202,8 +209,57 @@ CODE32_SEGMENT:								; 32位代码段数据
 	mov dl, 33
 		
 	call PrintString
+	
+	call SetupPage
 
 	jmp $
+
+;
+;
+SetupPage
+	push eax
+	push ecx
+	push edi
+	push es
+
+	mov ax, PageDirSelector
+	mov es, ax
+	mov ecx, 1024	; 1K sub tables
+	mov edi, 0
+	mov eax, PageTblBase | PG_P | PG_USU | PG_RWW
+	
+	cld
+	
+stdir:
+	stosd
+	add eax, 4096
+	loop stdir
+	
+	mov ax, PageTblSelector
+	mov es, ax
+	mov ecx, 1024 * 1024	; 1M pages
+	mov edi, 0
+	mov eax, PG_P | PG_USU | PG_RWW
+	
+	cld
+	
+sttbl:
+	stosd
+	add eax, 4096
+	loop sttbl
+	
+	mov eax, PageDirBase
+	mov cr3, eax
+	mov eax, cr0
+	or  eax, 0x80000000
+	mov cr0, eax
+	
+	pop es
+	pop edi
+	pop ecx
+	pop eax
+	
+	ret
 
 ; ds:ebp		--> string address
 ; bx			--> attribute
